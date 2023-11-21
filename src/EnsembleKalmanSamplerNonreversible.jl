@@ -67,14 +67,16 @@ function eksnr_update(
 ) where {FT <: Real, IT}
     # TODO: Work with input data as columns
 
+    tol = 1e8 * eps()
+
     # u_mean: N_par × 1
     u_mean = mean(u', dims = 2)
     # g_mean: N_obs × 1
     g_mean = mean(g', dims = 2)
-    cov_uu, cov_ug, cov_gg = get_cov_blocks(cov([u'; g'], corrected=false), size(u_mean, 1))
+    cov_uu, cov_ug, cov_gg = get_cov_blocks(cov([u'; g'], corrected = false), size(u_mean, 1))
 
     # Build the preconditioners:
-    dimen = size(u_mean,dims=1)
+    dimen = size(u_mean, dims = 1)
     if dimen != 2
         throw(ArgumentError("Nonreversible Implementation is only for dimension = 2, received $dimen"))
     end
@@ -83,32 +85,32 @@ function eksnr_update(
     # .vectors stores evecs as rows
     # D̃_opt = d * λ_min⁻¹ * v_min ⊗ v_min = λ_min⁻¹ D_opt
     λ_min = decomp_Cuu.values[1]
-    v = decomp_Cuu.vectors[:,1] 
-    D_opt = dimen * v * v' 
-    D̃_opt = 1 / λ_min * D_opt
+    v = decomp_Cuu.vectors[:, 1]
+    D_opt = dimen * v * v'
+    #D̃_opt = 1 / λ_min * D_opt
 
     # orthonormal basis such that ⟨Ψₖ, D̃_optΨₖ⟩ = Tr(D̃_opt) / d
     # Assume first: e_k are the standard basis
     ξ = 1.0 / sqrt(dimen) .* ones(dimen) # true when e_k standard basis
-    v_unit = v/norm(v)
-    
-    θ = acos(dot(ξ,v_unit))
+    v_unit = v / norm(v)
+
+    θ = acos(dot(ξ, v_unit))
     T1 = [cos(θ) -sin(θ); sin(θ) cos(θ)]
     T2 = [cos(-θ) -sin(-θ); sin(-θ) cos(-θ)]
-    A_θ = all(abs.(T1*ξ-v_unit) .< 1e8*eps()) ? T1 : T2
-    @assert all(abs.(A_θ*ξ - v_unit) .< 1e8*eps()) # just make sure T2 version works too...
+    A_θ = all(abs.(T1 * ξ - v_unit) .< tol) ? T1 : T2
+    @assert all(abs.(A_θ * ξ - v_unit) .< tol) # just make sure T2 version works too...
 
-    Ψ = zeros(dimen,dimen) #columns are evecs
-    for k = 1:dimen
+    Ψ = zeros(dimen, dimen) #columns are evecs
+    for k in 1:dimen
         # true when e_k standard basis
-        e_parr = ξ[k]*ξ + v_unit[k]*v_unit
+        e_parr = ξ[k] * ξ + v_unit[k] * v_unit
         e_parr /= norm(e_parr)
         if dimen > 2
             e_perp = -e_parr
             e_perp[k] += 1.0
-            Ψ[k,:] = A_θ*e_parr + e_perp
+            Ψ[k, :] = A_θ * e_parr + e_perp
         else
-            Ψ[k,:] = A_θ*e_parr
+            Ψ[k, :] = A_θ * e_parr
         end
     end
 
@@ -118,11 +120,15 @@ function eksnr_update(
         throw(ArgumentError("Nonreversible prefactor must be > 1, continuing with value 1.1"))
     end
 
-    λ = [(dimen-1) / (prefactor^2 - 1) + k - 1 for k = 1:dimen]
-    Ĵ_opt = zeros(dimen,dimen)
-    for k = 1:dimen
-        for j = 1:dimen
-            Ĵ_opt[j,k] = (λ[j]+λ[k])/(λ[j]-λ[k])*Ψ[j,:]'*D̃_opt*Ψ[k,:]
+    λ = [(dimen - 1) / (prefactor^2 - 1) + k - 1 for k in 1:dimen]
+    Ĵ_opt = zeros(dimen, dimen)
+    for k in 1:dimen
+        for j in k:dimen
+            #            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * Ψ[j, :]' * D̃_opt * Ψ[k, :]
+            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * (dimen / λ_min) * dot(Ψ[j, :], v) * dot(Ψ[k, :], v)
+            if j > k
+                Ĵ_opt[k, j] = -Ĵ_opt[j, k]
+            end
         end
     end
     sqC = sq(C)
@@ -130,14 +136,17 @@ function eksnr_update(
 
     # Building tmp matrices for EKSNR update:
     # misfit
-    misfit_mat = (1 / ekp.N_ens) * ( (g' .- g_mean)' * (ekp.obs_noise_cov \ (g' .- ekp.obs_mean) ))
+    misfit_mat = (1 / ekp.N_ens) * ((g' .- g_mean)' * (ekp.obs_noise_cov \ (g' .- ekp.obs_mean)))
 
     # Default: Δt = 1 / (norm(D) + eps(FT))
     Δt = ekp.Δt[end]
 
     # u_n+1 = u_n - Δt(D+J)[C^ug (Γ C^uu)⁻¹(y - g') + C_0⁻¹ (m_0 - u')] + sqrt(2Δt)*χ,  χ∼N(0,D)
-    implicit = u' - Δt * (D_opt + J_opt) *
-        (cov_ug' * ((Γ*cov_uu) \ (ekp.obs_mean-g')) + ekp.process.prior_cov \ (ekp.process.prior_mean - u'))
+    implicit =
+        u' -
+        Δt *
+        (D_opt + J_opt) *
+        (cov_ug' * ((Γ * cov_uu) \ (ekp.obs_mean - g')) + ekp.process.prior_cov \ (ekp.process.prior_mean - u'))
 
     noise_cov = MvNormal(D_opt) # only D in here
     u = implicit' + sqrt(2 * Δt) * rand(ekp.rng, noise_cov, ekp.N_ens)'
