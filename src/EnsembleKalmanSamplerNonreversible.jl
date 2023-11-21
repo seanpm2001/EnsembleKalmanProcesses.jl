@@ -134,10 +134,6 @@ function eksnr_update(
     sqC = sq(C)
     J_opt = sqC * Ψ * Ĵ_opt * inv(Ψ) * sqC
 
-    # Building tmp matrices for EKSNR update:
-    # misfit
-    misfit_mat = (1 / ekp.N_ens) * ((g' .- g_mean)' * (ekp.obs_noise_cov \ (g' .- ekp.obs_mean)))
-
     # Default: Δt = 1 / (norm(D) + eps(FT))
     Δt = ekp.Δt[end]
 
