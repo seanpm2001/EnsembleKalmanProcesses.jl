@@ -132,7 +132,7 @@ function eksnr_update(
         end
     end
     sqC = sq(C)
-    J_opt = sqC * Ψ * J * inv(Ψ) * sqC
+    J_opt = sqC * Ψ * Ĵ_opt * inv(Ψ) * sqC
 
     # Building tmp matrices for EKSNR update:
     # misfit
