@@ -25,7 +25,7 @@ end
 get_prefactor(ns::NonreversibleSampler) = ns.prefactor
 
 
-function NonreversibleSampler(prior::ParameterDistribution, prefactor = 1.1)
+function NonreversibleSampler(prior::ParameterDistribution; prefactor = 1.1)
     mean_prior = Vector(mean(prior))
     cov_prior = Matrix(cov(prior))
     FT = eltype(mean_prior)
@@ -71,28 +71,31 @@ function eksnr_update(
 
     # u_mean: N_par × 1
     u_mean = mean(u', dims = 2)
-    # g_mean: N_obs × 1
-    g_mean = mean(g', dims = 2)
-    cov_uu, cov_ug, cov_gg = get_cov_blocks(cov([u'; g'], corrected = false), size(u_mean, 1))
-
-    # Build the preconditioners:
-    dimen = size(u_mean, dims = 1)
+    dimen = size(u_mean, 1)
     if dimen != 2
         throw(ArgumentError("Nonreversible Implementation is only for dimension = 2, received $dimen"))
     end
+
+    # g_mean: N_obs × 1
+    g_mean = mean(g', dims = 2)
+    cov_uu, cov_ug, cov_gg = get_cov_blocks(cov([u'; g'], dims = 2, corrected = false), dimen)
+
+    # Build the preconditioners:
     decomp_Cuu = eigen(cov_uu)
     # .values = min -> max evals,
     # .vectors stores evecs as rows
     # D̃_opt = d * λ_min⁻¹ * v_min ⊗ v_min = λ_min⁻¹ D_opt
     λ_min = decomp_Cuu.values[1]
     v = decomp_Cuu.vectors[:, 1]
-    D_opt = dimen * v * v'
+    λ_min = norm(v) * λ_min #rescale lambda for a normlized v
+    v_unit = v / norm(v) # normalize v
+
+    D_opt = dimen * v_unit * v_unit'
     #D̃_opt = 1 / λ_min * D_opt
 
     # orthonormal basis such that ⟨Ψₖ, D̃_optΨₖ⟩ = Tr(D̃_opt) / d
     # Assume first: e_k are the standard basis
     ξ = 1.0 / sqrt(dimen) .* ones(dimen) # true when e_k standard basis
-    v_unit = v / norm(v)
 
     θ = acos(dot(ξ, v_unit))
     T1 = [cos(θ) -sin(θ); sin(θ) cos(θ)]
@@ -122,30 +125,35 @@ function eksnr_update(
 
     λ = [(dimen - 1) / (prefactor^2 - 1) + k - 1 for k in 1:dimen]
     Ĵ_opt = zeros(dimen, dimen)
-    for k in 1:dimen
-        for j in k:dimen
+    for k in 1:(dimen - 1)
+        for j in (k + 1):dimen
+
             #            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * Ψ[j, :]' * D̃_opt * Ψ[k, :]
-            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * (dimen / λ_min) * dot(Ψ[j, :], v) * dot(Ψ[k, :], v)
-            if j > k
-                Ĵ_opt[k, j] = -Ĵ_opt[j, k]
-            end
+            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * (dimen / λ_min) * dot(Ψ[j, :], v_unit) * dot(Ψ[k, :], v_unit)
+            Ĵ_opt[k, j] = -Ĵ_opt[j, k]
+
         end
     end
-    sqC = sq(C)
+    sqC = sqrt(cov_uu)
     J_opt = sqC * Ψ * Ĵ_opt * inv(Ψ) * sqC
+    println("D", D_opt)
+    println("J", J_opt)
 
     # Default: Δt = 1 / (norm(D) + eps(FT))
     Δt = ekp.Δt[end]
 
-    # u_n+1 = u_n - Δt(D+J)[C^ug (Γ C^uu)⁻¹(y - g') + C_0⁻¹ (m_0 - u')] + sqrt(2Δt)*χ,  χ∼N(0,D)
+    # u_n+1 = u_n - Δt(D+J)[(C^uu)^-1 C^ug Γ⁻¹(y - g') + C_0⁻¹ (m_0 - u')] + sqrt(2Δt)*χ,  χ∼N(0,D)    
     implicit =
         u' -
         Δt *
         (D_opt + J_opt) *
-        (cov_ug' * ((Γ * cov_uu) \ (ekp.obs_mean - g')) + ekp.process.prior_cov \ (ekp.process.prior_mean - u'))
+        (
+            cov_uu \ (cov_ug * (ekp.obs_noise_cov \ (ekp.obs_mean .- g'))) +
+            ekp.process.prior_cov \ (ekp.process.prior_mean .- u')
+        )
 
-    noise_cov = MvNormal(D_opt) # only D in here
-    u = implicit' + sqrt(2 * Δt) * rand(ekp.rng, noise_cov, ekp.N_ens)'
+    noise_cov = MvNormal(zeros(dimen), I(dimen)) # only D in here
+    u = implicit' + sqrt(2 * Δt) * (sqrt(D_opt) * rand(ekp.rng, noise_cov, ekp.N_ens))'
 
     return u
 end
