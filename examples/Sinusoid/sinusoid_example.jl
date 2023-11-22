@@ -75,8 +75,11 @@ N_ensemble = 5
 N_iterations = 5
 
 initial_ensemble = EKP.construct_initial_ensemble(rng, prior, N_ensemble)
-
-ensemble_kalman_process = EKP.EnsembleKalmanProcess(initial_ensemble, y, Γ, Inversion(); rng = rng)
+#process = Inversion()
+#process = Sampler(prior)
+process = NonreversibleSampler(prior, prefactor = 1.1)
+ensemble_kalman_process =
+    EKP.EnsembleKalmanProcess(initial_ensemble, y, Γ, process; rng = rng, scheduler = EKSStableScheduler())
 nothing # hide
 
 # We are now ready to carry out the inversion. At each iteration, we get the
@@ -96,7 +99,7 @@ final_ensemble = get_ϕ_final(prior, ensemble_kalman_process)
 
 # To visualize the success of the inversion, we plot model with the true
 # parameters, the initial ensemble, and the final ensemble.
-plot(trange, model(theta_true...), c = :black, label = "Truth", legend = :bottomright, linewidth = 2)
+ppp = plot(trange, model(theta_true...), c = :black, label = "Truth", legend = :bottomright, linewidth = 2)
 plot!(
     trange,
     [model(get_ϕ(prior, ensemble_kalman_process, 1)[:, i]...) for i in 1:N_ensemble],
@@ -109,3 +112,4 @@ xlabel!("Time")
 
 # We see that the final ensemble is much closer to the truth. Note that the
 # random phase shift is of no consequence.
+savefig(ppp, "sinusoid_output.png")
