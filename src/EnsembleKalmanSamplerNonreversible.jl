@@ -135,9 +135,8 @@ function eksnr_update(
         end
     end
     sqC = sqrt(cov_uu)
-    J_opt = sqC * Ψ * Ĵ_opt * inv(Ψ) * sqC
-    println("D", D_opt)
-    println("J", J_opt)
+    # as ΨΨ' = I
+    J_opt = sqC * Ψ * Ĵ_opt * Ψ' * sqC
 
     # Default: Δt = 1 / (norm(D) + eps(FT))
     Δt = ekp.Δt[end]
