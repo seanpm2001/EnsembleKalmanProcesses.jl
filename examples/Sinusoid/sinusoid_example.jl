@@ -72,14 +72,15 @@ nothing # hide
 
 # We now generate the initial ensemble and set up the ensemble Kalman inversion.
 N_ensemble = 5
-N_iterations = 5
+N_iterations = 130
 
 initial_ensemble = EKP.construct_initial_ensemble(rng, prior, N_ensemble)
 #process = Inversion()
 #process = Sampler(prior)
-process = NonreversibleSampler(prior, prefactor = 1.1)
+process = NonreversibleSampler(prior, prefactor = 2.5) # prefactor (1.1 - 1.5) vs stepsizeu
+fixed_step = 1e-5
 ensemble_kalman_process =
-    EKP.EnsembleKalmanProcess(initial_ensemble, y, Γ, process; rng = rng, scheduler = EKSStableScheduler())
+    EKP.EnsembleKalmanProcess(initial_ensemble, y, Γ, process; rng = rng, scheduler = DefaultScheduler(fixed_step), verbose = true)
 nothing # hide
 
 # We are now ready to carry out the inversion. At each iteration, we get the
