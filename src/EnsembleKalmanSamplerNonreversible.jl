@@ -87,35 +87,59 @@ function eksnr_update(
     # D̃_opt = d * λ_min⁻¹ * v_min ⊗ v_min = λ_min⁻¹ D_opt
     λ_min = decomp_Cuu.values[1]
     v = decomp_Cuu.vectors[:, 1]
+    # normalize
+    v /= norm(v) # normalize v
     λ_min = norm(v) * λ_min #rescale lambda for a normlized v
-    v_unit = v / norm(v) # normalize v
 
-    D_opt = dimen * v_unit * v_unit'
+    D_opt = dimen * v * v'
     #D̃_opt = 1 / λ_min * D_opt
 
     # orthonormal basis such that ⟨Ψₖ, D̃_optΨₖ⟩ = Tr(D̃_opt) / d
     # Assume first: e_k are the standard basis
     ξ = 1.0 / sqrt(dimen) .* ones(dimen) # true when e_k standard basis
 
-    θ = acos(dot(ξ, v_unit))
+    # create ṽ, the (normalized) normal vector from v that passes through ξ
+    ṽ = ξ - dot(ξ, v) * v
+    ṽ /= norm(ṽ)
+
+    θ = acos(dot(ξ, v))
     T1 = [cos(θ) -sin(θ); sin(θ) cos(θ)]
     T2 = [cos(-θ) -sin(-θ); sin(-θ) cos(-θ)]
-    A_θ = all(abs.(T1 * ξ - v_unit) .< tol) ? T1 : T2
-    @assert all(abs.(A_θ * ξ - v_unit) .< tol) # just make sure T2 version works too...
+    A_θ = all(abs.(T1 * [dot(ξ, v); dot(ξ, ṽ)] .- [1.0; 0.0]) .< tol) ? T1 : T2
+    @assert all(abs.(A_θ * [dot(ξ, v); dot(ξ, ṽ)] .- [1.0; 0.0]) .< tol) # just make sure T2 version works too...
 
     Ψ = zeros(dimen, dimen) #columns are evecs
     for k in 1:dimen
-        # true when e_k standard basis
-        e_parr = ξ[k] * ξ + v_unit[k] * v_unit
-        e_parr /= norm(e_parr)
+        # true when e_k standard basis 
+        e_parr_coeff = [v[k] ṽ[k]]
+        e_parr_vec = [v ṽ]'
+
         if dimen > 2
+            e_parr = e_parr_coeff * e_parr_vec
+            # e_perp satisfies e_parr + e_perp = e_k
             e_perp = -e_parr
             e_perp[k] += 1.0
-            Ψ[k, :] = A_θ * e_parr + e_perp
+
+            Ψ[k, :] = (A_θ * e_parr_coeff')' * e_parr_vec + e_perp
         else
-            Ψ[k, :] = A_θ * e_parr
+            Ψ[k, :] = (A_θ * e_parr_coeff')' * e_parr_vec
+        end
+        Ψ[k, :] /= norm(Ψ[k, :])
+    end
+    # useful test: if this produces a ONB
+
+    for j in 1:dimen
+        for k in 1:dimen
+            if j == k
+                @assert (norm(Ψ[k, :]) .- ones(dimen) .< tol) #true if normal
+            else
+                @assert abs(dot(Ψ[k, :], Ψ[j, :])) .< tol #true if orthogonal
+            end
         end
     end
+
+
+    #@assert all(abs.([norm(Ψ[k,:]) for k=1:dimen] .- ones(dimen)) .< tol) #true if normal
 
     # now calculate J
     prefactor = get_prefactor(ekp.process)
@@ -129,7 +153,7 @@ function eksnr_update(
         for j in (k + 1):dimen
 
             #            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * Ψ[j, :]' * D̃_opt * Ψ[k, :]
-            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * (dimen / λ_min) * dot(Ψ[j, :], v_unit) * dot(Ψ[k, :], v_unit)
+            Ĵ_opt[j, k] = (λ[j] + λ[k]) / (λ[j] - λ[k]) * (dimen / λ_min) * dot(Ψ[j, :], v) * dot(Ψ[k, :], v)
             Ĵ_opt[k, j] = -Ĵ_opt[j, k]
 
         end
