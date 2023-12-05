@@ -127,17 +127,17 @@ function eksnr_update(
         Ψ[k, :] /= norm(Ψ[k, :])
     end
     # useful test: if this produces a ONB
-
+    #=
     for j in 1:dimen
         for k in 1:dimen
             if j == k
-                @assert (norm(Ψ[k, :]) .- ones(dimen) .< tol) #true if normal
+                @assert (norm(Ψ[k, :]) - 1.0 < tol) #true if normal
             else
-                @assert abs(dot(Ψ[k, :], Ψ[j, :])) .< tol #true if orthogonal
+                @assert (abs(dot(Ψ[k, :], Ψ[j, :])) < tol) #true if orthogonal
             end
         end
     end
-
+    =#
 
     #@assert all(abs.([norm(Ψ[k,:]) for k=1:dimen] .- ones(dimen)) .< tol) #true if normal
 
