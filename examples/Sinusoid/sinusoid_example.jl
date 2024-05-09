@@ -65,20 +65,23 @@ nothing # hide
 # we define a prior with mean 2 and standard deviation 1. It is
 # additionally constrained to be nonnegative. For the vertical shift we define
 # a Gaussian prior with mean 0 and standard deviation 5.
+
 prior_u1 = constrained_gaussian("amplitude", 2, 1, 0, Inf)
 prior_u2 = constrained_gaussian("vert_shift", 0, 5, -Inf, Inf)
 prior = combine_distributions([prior_u1, prior_u2])
+
 nothing # hide
 
 # We now generate the initial ensemble and set up the ensemble Kalman inversion.
-N_ensemble = 5
-N_iterations = 200
+N_ensemble = 20
+N_iterations = 2000
 
 initial_ensemble = EKP.construct_initial_ensemble(rng, prior, N_ensemble)
 #process = Inversion()
 #process = Sampler(prior)
-process = NonreversibleSampler(prior, prefactor = 1.3) # prefactor (1.1 - 1.5) vs stepsizeu
-fixed_step = 1e-5
+process = NonreversibleSampler(prior, prefactor = 1.5) # prefactor (1.1 - 1.5) vs stepsize
+#fixed_step = 1e-3
+fixed_step = 1e-4
 ensemble_kalman_process = EKP.EnsembleKalmanProcess(
     initial_ensemble,
     y,
@@ -95,10 +98,11 @@ nothing # hide
 # and apply the Kalman update to the ensemble.
 for i in 1:N_iterations
     params_i = get_ϕ_final(prior, ensemble_kalman_process)
-
+    println(tr(cov(params_i)))
     G_ens = hcat([G(params_i[:, i]) for i in 1:N_ensemble]...)
 
     EKP.update_ensemble!(ensemble_kalman_process, G_ens)
+
 end
 nothing # hide
 
@@ -107,6 +111,9 @@ final_ensemble = get_ϕ_final(prior, ensemble_kalman_process)
 
 # To visualize the success of the inversion, we plot model with the true
 # parameters, the initial ensemble, and the final ensemble.
+
+println(final_ensemble)
+
 ppp = plot(trange, model(theta_true...), c = :black, label = "Truth", legend = :bottomright, linewidth = 2)
 plot!(
     trange,
