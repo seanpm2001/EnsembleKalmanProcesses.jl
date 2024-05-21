@@ -51,7 +51,7 @@ scheduler = DefaultScheduler(fixed_step)
 # observables are the ``y`` range of the curve (which is informative about its
 # amplitude), as well as its mean (which is informative about its vertical shift).
 function G(u)
-    return u[1]+u[2]
+    return u[1] + u[2]
 end
 nothing # hide
 
@@ -73,7 +73,7 @@ nothing # hide
 # we define a prior with mean 2 and standard deviation 1. It is
 # additionally constrained to be nonnegative. For the vertical shift we define
 # a Gaussian prior with mean 0 and standard deviation 5.
-prior = constrained_gaussian("u", 0, sqrt(10), -Inf, Inf, repeats=2)
+prior = constrained_gaussian("u", 0, sqrt(10), -Inf, Inf, repeats = 2)
 nothing # hide
 
 # We now generate the initial ensemble and set up the ensemble Kalman inversion.
@@ -89,8 +89,8 @@ ensemble_kalman_process = EKP.EnsembleKalmanProcess(
     process;
     rng = rng,
     scheduler = DefaultScheduler(fixed_step),
-#   scheduler = DataMisfitController(),
-#     scheduler = EKSStableScheduler(),
+    #   scheduler = DataMisfitController(),
+    #     scheduler = EKSStableScheduler(),
     verbose = true,
 )
 nothing # hide
@@ -100,8 +100,8 @@ nothing # hide
 # and apply the Kalman update to the ensemble.
 for i in 1:N_iterations
     params_i = get_ϕ_final(prior, ensemble_kalman_process)
-    println(mean(params_i,dims=2)[:])
-    println(cov(params_i,dims=2))
+    println(mean(params_i, dims = 2)[:])
+    println(cov(params_i, dims = 2))
     G_ens = hcat([G(params_i[:, i]) for i in 1:N_ensemble]...)
 
     EKP.update_ensemble!(ensemble_kalman_process, G_ens)
@@ -115,37 +115,31 @@ final_ensemble = get_ϕ_final(prior, ensemble_kalman_process)
 # parameters, the initial ensemble, and the final ensemble.
 if make_gif
     anim_linear = @animate for i in 1:N_iterations
-        
+
         ppp = scatter(
-            get_ϕ(prior, ensemble_kalman_process, 1)[1,:],
-            get_ϕ(prior, ensemble_kalman_process, 1)[2,:],
-            c=:red,
+            get_ϕ(prior, ensemble_kalman_process, 1)[1, :],
+            get_ϕ(prior, ensemble_kalman_process, 1)[2, :],
+            c = :red,
             label = ["Initial ensemble" "" "" "" ""],
         )
         soln = get_ϕ(prior, ensemble_kalman_process, i)
-        
-        scatter!(
-            ppp,
-            soln[1,:],
-            soln[2,:],
-            c = :blue,
-            label = ["ensemble $i"],
-        )
+
+        scatter!(ppp, soln[1, :], soln[2, :], c = :blue, label = ["ensemble $i"])
     end
     gif(anim_linear, "linear_output_$case.gif", fps = 30) # hide
 end
 
 ppp = scatter(
-    get_ϕ(prior, ensemble_kalman_process, 1)[1,:],
-    get_ϕ(prior, ensemble_kalman_process, 1)[2,:],
-    c=:red,
+    get_ϕ(prior, ensemble_kalman_process, 1)[1, :],
+    get_ϕ(prior, ensemble_kalman_process, 1)[2, :],
+    c = :red,
     label = ["Initial ensemble" "" "" "" ""],
 )
 
 scatter!(
     ppp,
-    get_ϕ_final(prior, ensemble_kalman_process)[1,:],
-    get_ϕ_final(prior, ensemble_kalman_process)[2,:],
+    get_ϕ_final(prior, ensemble_kalman_process)[1, :],
+    get_ϕ_final(prior, ensemble_kalman_process)[2, :],
     c = :blue,
     label = ["Final ensemble" "" "" "" ""],
 )
